@@ -1,0 +1,3 @@
+-r ../../requirements.txt
+pdfplumber
+faiss-cpu
