@@ -1,6 +1,7 @@
 import streamlit as st
 from langchain_core.messages.chat import ChatMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import load_prompt
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
@@ -15,6 +16,9 @@ if "messages" not in st.session_state:
 
 with st.sidebar:
     clear_btn = st.button("대화 초기화")
+    selected_prompt = st.selectbox(
+        "프롬프트를 선택해 주세요", ("순한맛", "매운맛", "미친 매운맛"), index=1
+    )
 
 
 # 대화 저장 함수
@@ -29,7 +33,7 @@ def print_message():
 
 
 # 체인 생성 함수
-def create_chain():
+def create_chain(prompt_type):
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -39,6 +43,11 @@ def create_chain():
             ("user", "Question:\n{question}"),
         ]
     )
+
+    if prompt_type == "순한맛":
+        prompt = load_prompt("prompt/kind.yaml", encoding="utf-8")
+    elif prompt_type == "미친 매운맛":
+        prompt = load_prompt("prompt/hell.yaml", encoding="utf-8")
 
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
@@ -62,7 +71,7 @@ user_input = st.chat_input("궁금한 내용을 물어보세요!")
 if user_input:
     st.chat_message("user").write(user_input)
     # 체인 생성
-    chain = create_chain()
+    chain = create_chain(selected_prompt)
     # 체인에 유저 질문 넣고 응답 담기
     response = chain.stream({"question": user_input})
     # 스트리밍 처럼 보이게 하기 위해서
