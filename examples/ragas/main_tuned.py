@@ -1,20 +1,19 @@
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 from ragas import EvaluationDataset, SingleTurnSample, evaluate
+from ragas.llms import LangchainLLMWrapper
 from ragas.metrics import AnswerRelevancy, ContextPrecision, ContextRecall, Faithfulness
 
-from rag_pipeline import build_pipeline, build_vectorstore, load_documents, split_documents
+from rag_pipeline_tuned import build_pipeline, build_vectorstore, load_documents, split_documents
 
 load_dotenv()
 
 docs = load_documents()
-chunks = split_documents(docs)
+chunks = split_documents(docs)  # chunk_size=300 (rag_pipeline_tuned.py) — 유일하게 바뀐 변수
 vectorstore = build_vectorstore(chunks)
 
-# 6. RAGAS 평가 준비
-# data/피지컬 AI의 현황과 시사점.pdf 를 직접 읽고 작성한 평가 질문 5개 + 정답(reference).
-# TestsetGenerator(자동 생성)를 시도했으나 이 문서 규모에서는 시나리오가 0개로 조용히
-# 실패함(멀티홉 질문에 필요한 노드 간 관계가 기본 임계값을 못 넘긴 것으로 추정). 우리
-# 목적은 "완벽한 데이터셋"이 아니라 "리랭커 有/無를 같은 잣대로 비교"라 수기 평가셋으로 회귀.
+# main.py와 완전히 동일한 평가셋/채점 로직. 바뀐 건 chunk_size 하나뿐이라는 걸
+# 보여주려고 일부러 그대로 복붙함 (docs/07에서 리랭커 유무만 바꿨던 것과 같은 원칙).
 EVAL_SET = [
     {
         "question": "AI 로보틱스 시장 규모는 2030년에 얼마로 전망되나요?",
@@ -38,11 +37,13 @@ EVAL_SET = [
     },
 ]
 
+# RAGAS 채점 LLM을 temperature=0으로 고정 (docs/07 "채점 노이즈" 참고).
+# 완전한 결정론은 아니지만, 앞으로의 튜닝 실험에서 "진짜 효과 vs 우연"을 덜 헷갈리게 함.
+JUDGE_LLM = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini", temperature=0))
 METRICS = [Faithfulness(), AnswerRelevancy(), ContextPrecision(), ContextRecall()]
 
 
 def run_eval(name: str, ask) -> None:
-    """②단계(ask로 답안 생성) + ③단계(RAGAS 채점)를 한 파이프라인에 대해 실행."""
     samples = []
     for item in EVAL_SET:
         result = ask(item["question"])
@@ -55,7 +56,7 @@ def run_eval(name: str, ask) -> None:
             )
         )
 
-    scores = evaluate(EvaluationDataset(samples=samples), metrics=METRICS)
+    scores = evaluate(EvaluationDataset(samples=samples), metrics=METRICS, llm=JUDGE_LLM)
     result_df = scores.to_pandas()
 
     print(f"\n=== {name} ===")
@@ -64,13 +65,10 @@ def run_eval(name: str, ask) -> None:
     print(result_df[[m.name for m in METRICS]].mean())
 
 
-# 7. 베이스라인 (리랭커 없음) 평가
-ask_baseline = build_pipeline(vectorstore, use_reranker=False)
-run_eval("베이스라인 (리랭커 없음)", ask_baseline)
+print(f"청크 개수: {len(chunks)}개 (chunk_size=300 기준, 기존 106개와 비교)")
 
-# 8~9. 리랭커 적용 평가
-# 청크 크기(chunk_size)나 fetch_k는 아직 안 건드림 — 순수하게 "리랭커 유무" 하나만
-# 바꿔서 비교해야 공정한 결과가 나옴. 여기서 나온 약점(정답 청크가 후보 풀 밖에 있는
-# 경우)을 확인한 뒤에 튜닝(청킹/기본 k)으로 넘어가는 게 다음 단계.
+ask_baseline = build_pipeline(vectorstore, use_reranker=False)
+run_eval("청킹 튜닝 + 베이스라인 (리랭커 없음)", ask_baseline)
+
 ask_reranked = build_pipeline(vectorstore, use_reranker=True)
-run_eval("리랭커 적용 (LLMListwiseRerank)", ask_reranked)
+run_eval("청킹 튜닝 + 리랭커 적용", ask_reranked)
