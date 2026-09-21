@@ -18,7 +18,8 @@ RAG와 LangChain 관련 실습을 폴더별로 쌓아가기 위한 저장소입�
 │   └── README.md
 ├── docs/
 │   └── README.md
-├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 └── .env
 ```
 
@@ -27,13 +28,19 @@ RAG와 LangChain 관련 실습을 폴더별로 쌓아가기 위한 저장소입�
 먼저 루트에서 의존성을 설치합니다.
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 실습 앱은 각 실습 폴더의 `app.py`를 직접 지정해서 실행합니다.
 
 ```bash
-streamlit run examples/01-basic-chatbot/app.py
+uv run streamlit run examples/01-basic-chatbot/app.py
+```
+
+새 패키지는 루트에서 추가합니다.
+
+```bash
+uv add 패키지명
 ```
 
 ## 실습 추가 규칙
